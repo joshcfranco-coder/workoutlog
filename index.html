@@ -10,4 +10,796 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="manifest" href="/manifest.json" />
   <title>WorkoutLog</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a0a0a; overscroll-behavior: none; height: 100%; width: 100%; overflow: hidden; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    input, textarea { -webkit-user-select: auto; user-select: auto; }
+    #root { height: 100%; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+window.storage = {
+  get: async (key) => {
+    const v = localStorage.getItem(key);
+    return v !== null ? { value: v } : null;
+  },
+  set: async (key, value) => {
+    localStorage.setItem(key, value);
+    return { key, value };
+  }
+};
+
+const { useState, useEffect, useRef } = React;
+const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid } = Recharts;
+
+const LIB = {
+  Chest: ["Bench Press","Incline Bench Press","Decline Bench Press","Dumbbell Fly","Cable Fly","Push-Up","Dips"],
+  Back: ["Pull-Up","Lat Pulldown","Barbell Row","Seated Cable Row","T-Bar Row","Deadlift","Face Pull"],
+  Shoulders: ["Overhead Press","Lateral Raise","Front Raise","Reverse Fly","Arnold Press","Shrugs"],
+  Arms: ["Barbell Curl","Dumbbell Curl","Hammer Curl","Tricep Pushdown","Skull Crusher","Overhead Tricep Extension","Preacher Curl"],
+  Legs: ["Squat","Leg Press","Romanian Deadlift","Leg Extension","Leg Curl","Calf Raise","Bulgarian Split Squat","Hack Squat"],
+  Core: ["Plank","Crunches","Leg Raise","Russian Twist","Cable Crunch","Ab Wheel"]
+};
+const MCOL = {Chest:"#ef4444",Back:"#3b82f6",Shoulders:"#f59e0b",Arms:"#8b5cf6",Legs:"#10b981",Core:"#06b6d4"};
+const GROUPS = Object.keys(LIB);
+const TEMPLATES = [
+  {name:"Day 1 — Chest", exercises:["Bench Press","Incline Bench Press","Dumbbell Fly","Cable Fly","Dips"]},
+  {name:"Day 2 — Back", exercises:["Pull-Up","Lat Pulldown","Barbell Row","Seated Cable Row","Face Pull"]},
+  {name:"Day 3 — Shoulders", exercises:["Overhead Press","Lateral Raise","Front Raise","Reverse Fly","Shrugs"]},
+  {name:"Day 4 — Arms", exercises:["Barbell Curl","Hammer Curl","Tricep Pushdown","Skull Crusher","Preacher Curl"]},
+  {name:"Day 5 — Legs", exercises:["Squat","Leg Press","Romanian Deadlift","Leg Extension","Calf Raise"]},
+];
+const PLATE_COLORS = { 45: "#ef4444", 35: "#f59e0b", 25: "#10b981", 10: "#6b7280", 5: "#3b82f6", 2.5: "#a78bfa" };
+const PLATES_LBS = [45, 35, 25, 10, 5, 2.5];
+
+const Icon = ({ name, size = 20 }) => {
+  const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (name === "today") return <svg {...props}><path d="M6 6v12M18 6v12M3 9v6M21 9v6M6 12h12"/></svg>;
+  if (name === "history") return <svg {...props}><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>;
+  if (name === "progress") return <svg {...props}><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>;
+  if (name === "library") return <svg {...props}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>;
+  if (name === "trophy") return <svg {...props}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+  if (name === "trash") return <svg {...props}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+  if (name === "plus") return <svg {...props}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+  if (name === "flame") return <svg {...props}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>;
+  if (name === "calc") return <svg {...props}><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="8" y1="14" x2="8.01" y2="14"/><line x1="12" y1="14" x2="12.01" y2="14"/><line x1="16" y1="14" x2="16.01" y2="14"/><line x1="8" y1="18" x2="8.01" y2="18"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="16" y1="18" x2="16.01" y2="18"/></svg>;
+  return null;
+};
+
+const css = `
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh;background:#0a0a0a;color:#f0f0f0;max-width:480px;margin:0 auto;position:relative;overflow:hidden}
+.hdr{padding:calc(18px + env(safe-area-inset-top,0px)) 20px 12px;border-bottom:1px solid #1c1c1c;flex-shrink:0}
+.hdr-title{font-size:22px;font-weight:800;letter-spacing:-0.5px}
+.hdr-sub{font-size:12px;color:#555;margin-top:3px}
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;padding-bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;display:flex;background:#0d0d0d;border-top:1px solid #1e1e1e;z-index:100;padding-bottom:env(safe-area-inset-bottom,0px)}
+.tbtn{flex:1;padding:11px 0 12px;font-size:10px;color:#555;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;background:none;border:none;transition:color .15s;font-weight:600;letter-spacing:.3px}
+.tbtn.on{color:#a78bfa}
+.card{background:#161616;border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid #1e1e1e}
+.card-t{font-size:15px;font-weight:700;margin-bottom:12px}
+.btn{padding:10px 16px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s}
+.btn:active{opacity:.8}
+.bp{background:#a78bfa;color:#fff}
+.bs{background:#1e1e1e;color:#aaa}
+.bd{background:#ef444420;color:#ef4444}
+.bg{background:none;color:#666;border:1px solid #2a2a2a}
+.bsm{padding:6px 12px;font-size:12px;border-radius:7px}
+.bxs{padding:4px 9px;font-size:11px;border-radius:6px}
+.bfw{width:100%;margin-top:8px;display:block;text-align:center}
+.exc{background:#0f0f0f;border-radius:11px;padding:12px;margin-bottom:10px;border:1px solid #1c1c1c}
+.enm{font-size:14px;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.srow{display:grid;grid-template-columns:24px 1fr 1fr 30px 22px;gap:6px;align-items:center;margin-bottom:6px}
+.snum{color:#444;font-size:11px;text-align:center}
+.sinp{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:7px 4px;color:#f0f0f0;font-size:13px;text-align:center;width:100%}
+.sinp:focus{outline:none;border-color:#a78bfa}
+.sdone{background:none;border:1.5px solid #2a2a2a;border-radius:7px;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;color:transparent;padding:0}
+.sdone.on{background:#a78bfa22;border-color:#a78bfa;color:#a78bfa}
+.sdone svg{width:14px;height:14px}
+.srm{background:none;border:none;color:#333;cursor:pointer;font-size:18px;padding:0;line-height:1}
+.shdr{display:grid;grid-template-columns:24px 1fr 1fr 30px 22px;gap:6px;font-size:10px;color:#444;margin-bottom:5px;text-align:center;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.rest{background:#161616;border-radius:11px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;border:1px solid #1e1e1e}
+.empty{text-align:center;padding:40px 20px;color:#444}
+.ei{display:flex;justify-content:center;margin-bottom:18px;color:#2a2a2a}
+.et{font-size:18px;font-weight:700;margin-bottom:6px;color:#666}
+.es{font-size:14px;color:#3a3a3a}
+.badge{background:#a78bfa22;color:#a78bfa;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.prow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #1c1c1c;gap:10px}
+.prow:last-child{border:none}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;font-size:11px;margin:2px 3px 2px 0}
+.tag-rm{background:none;border:none;color:inherit;opacity:.5;cursor:pointer;font-size:13px;line-height:1;padding:0}
+.tag-rm:hover{opacity:1}
+.ov{position:fixed;inset:0;background:#000b;z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:#161616;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:82vh;overflow-y:auto;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));border:1px solid #222;border-bottom:none}
+.mhdl{width:38px;height:4px;background:#2a2a2a;border-radius:2px;margin:0 auto 16px}
+.mt{font-size:18px;font-weight:800;margin-bottom:14px}
+.mitem{padding:11px 12px;border-radius:9px;cursor:pointer;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.mitem:hover{background:#1e1e1e}
+.cust-bg{font-size:9px;background:#a78bfa22;color:#a78bfa;padding:2px 6px;border-radius:8px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.cust-form{background:#0f0f0f;border:1px solid #2a2a2a;border-radius:11px;padding:14px;margin-bottom:12px}
+.finp{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:9px 11px;color:#f0f0f0;font-size:13px;width:100%;margin-bottom:8px}
+.finp:focus{outline:none;border-color:#a78bfa}
+.fsel{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:7px;padding:9px 11px;color:#f0f0f0;font-size:13px;width:100%;margin-bottom:10px}
+.sesh-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px}
+.sec-t{font-size:16px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.psel{background:#161616;border:1px solid #2a2a2a;color:#f0f0f0;border-radius:9px;padding:10px 12px;font-size:14px;width:100%}
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+.fin-btn{background:#a78bfa;color:#fff;border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer}
+.plate-btn{background:#1e1e1e;color:#a78bfa;border:1px solid #2a2a2a;border-radius:9px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.hitem{display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer}
+.hmeta{font-size:12px;color:#444;margin-top:3px}
+.hexs{margin-top:10px;padding-top:10px;border-top:1px solid #1c1c1c}
+.hexn{font-size:13px;font-weight:600;color:#bbb;margin-bottom:3px}
+.hset{font-size:12px;color:#555}
+.del-row{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid #1c1c1c}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat-card{background:#161616;border-radius:14px;padding:14px;border:1px solid #1e1e1e}
+.stat-lbl{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px}
+.stat-val{font-size:24px;font-weight:800;color:#f0f0f0;line-height:1}
+.stat-sub{font-size:11px;color:#666;margin-top:4px}
+.muscle-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1c1c1c}
+.muscle-row:last-child{border:none}
+.muscle-name{font-size:13px;font-weight:600}
+.fresh-bdg{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px}
+.plate{color:#fff;padding:14px 5px;border-radius:3px;font-size:11px;font-weight:800;min-width:30px;text-align:center;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.bar-vis{display:flex;align-items:center;justify-content:center;gap:2px;padding:14px 0;overflow-x:auto}
+.bar-shaft{height:8px;width:48px;background:linear-gradient(180deg,#888,#444);border-radius:1px;flex-shrink:0;margin:0 1px}
+.bar-collar{height:18px;width:6px;background:#666;border-radius:1px;flex-shrink:0}
+`;
+
+const epley = (w, r) => r === 1 ? w : Math.round(w * (1 + r / 30));
+
+const calcPlates = (target, bar = 45) => {
+  if (target < bar) return { error: `Target less than bar weight (${bar} lb)` };
+  const perSide = (target - bar) / 2;
+  const result = [];
+  let remaining = perSide;
+  for (const p of PLATES_LBS) {
+    let count = 0;
+    while (remaining >= p - 0.001) { remaining -= p; count++; }
+    if (count > 0) result.push({ weight: p, count });
+  }
+  if (remaining > 0.01) return { plates: result, perSide, error: `Can't make exactly — ${remaining.toFixed(2)} lb short per side` };
+  return { plates: result, perSide };
+};function App() {
+  const [tab, setTab] = useState("today");
+  const [workouts, setWorkouts] = useState([]);
+  const [prs, setPrs] = useState({});
+  const [customExs, setCustomExs] = useState([]);
+  const [session, setSession] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [rest, setRest] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [progEx, setProgEx] = useState("");
+  const [expHist, setExpHist] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [customForm, setCustomForm] = useState(null);
+  const [plateInput, setPlateInput] = useState({ target: "135", bar: "45" });
+  const [loading, setLoading] = useState(true);
+  const elRef = useRef(null);
+  const restRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try { const r = await window.storage.get("wl_workouts"); if (r) setWorkouts(JSON.parse(r.value)); } catch {}
+      try { const r = await window.storage.get("wl_prs"); if (r) setPrs(JSON.parse(r.value)); } catch {}
+      try { const r = await window.storage.get("wl_customExs"); if (r) setCustomExs(JSON.parse(r.value)); } catch {}
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (session) elRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    else { clearInterval(elRef.current); setElapsed(0); }
+    return () => clearInterval(elRef.current);
+  }, [!!session]);
+
+  useEffect(() => {
+    clearTimeout(restRef.current);
+    if (rest?.remaining > 0) restRef.current = setTimeout(() => setRest(r => r ? { ...r, remaining: r.remaining - 1 } : null), 1000);
+    return () => clearTimeout(restRef.current);
+  }, [rest?.remaining]);
+
+  const save = async (w, p, c) => {
+    if (w !== undefined) { setWorkouts(w); try { await window.storage.set("wl_workouts", JSON.stringify(w)); } catch {} }
+    if (p !== undefined) { setPrs(p); try { await window.storage.set("wl_prs", JSON.stringify(p)); } catch {} }
+    if (c !== undefined) { setCustomExs(c); try { await window.storage.set("wl_customExs", JSON.stringify(c)); } catch {} }
+  };
+
+  const mergedLib = (() => {
+    const m = {};
+    GROUPS.forEach(k => { m[k] = [...LIB[k]]; });
+    customExs.forEach(c => {
+      if (!m[c.group]) m[c.group] = [];
+      if (!m[c.group].includes(c.name)) m[c.group].push(c.name);
+    });
+    return m;
+  })();
+
+  const isCustom = name => customExs.some(c => c.name === name);
+
+  const stats = (() => {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setHours(0, 0, 0, 0);
+    const dow = now.getDay();
+    monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+    const thisWeek = workouts.filter(w => new Date(w.date) >= monday).length;
+    const weekCounts = {};
+    workouts.forEach(w => {
+      const d = new Date(w.date);
+      const m = new Date(d);
+      m.setHours(0, 0, 0, 0);
+      const wd = d.getDay();
+      m.setDate(d.getDate() - (wd === 0 ? 6 : wd - 1));
+      const k = m.toISOString();
+      weekCounts[k] = (weekCounts[k] || 0) + 1;
+    });
+    let streak = 0;
+    const check = new Date(monday);
+    if ((weekCounts[check.toISOString()] || 0) >= 3) {
+      streak++;
+      check.setDate(check.getDate() - 7);
+    } else {
+      check.setDate(check.getDate() - 7);
+    }
+    while ((weekCounts[check.toISOString()] || 0) >= 3) {
+      streak++;
+      check.setDate(check.getDate() - 7);
+    }
+    const muscleStatus = {};
+    GROUPS.forEach(g => {
+      const groupExs = mergedLib[g] || [];
+      const last = workouts.find(w => w.exercises.some(ex => groupExs.includes(ex.name) && ex.sets.some(s => s.done)));
+      muscleStatus[g] = last ? Math.floor((now - new Date(last.date)) / 86400000) : null;
+    });
+    return { thisWeek, streak, muscleStatus, total: workouts.length };
+  })();
+
+  const startSession = (tpl = null) => {
+    const exs = tpl ? tpl.exercises.map(n => ({ name: n, sets: [{ weight: "", reps: "", done: false }] })) : [];
+    setSession({ name: tpl?.name || "Custom Workout", exercises: exs });
+    setModal(null);
+  };
+
+  const addEx = name => {
+    setSession(s => ({ ...s, exercises: [...s.exercises, { name, sets: [{ weight: "", reps: "", done: false }] }] }));
+    setModal(null);
+  };
+
+  const addCustomEx = async () => {
+    const name = customForm?.name?.trim();
+    const group = customForm?.group;
+    if (!name || !group) return;
+    if (Object.values(mergedLib).flat().some(e => e.toLowerCase() === name.toLowerCase())) {
+      setCustomForm({ ...customForm, error: "Already exists" });
+      return;
+    }
+    await save(undefined, undefined, [...customExs, { name, group }]);
+    setCustomForm(null);
+  };
+
+  const removeCustomEx = async (name, group) => {
+    await save(undefined, undefined, customExs.filter(c => !(c.name === name && c.group === group)));
+  };
+
+  const removeEx = ei => setSession(s => ({ ...s, exercises: s.exercises.filter((_, i) => i !== ei) }));
+
+  const addSet = ei => setSession(s => {
+    const exs = s.exercises.map((ex, i) => i !== ei ? ex : {
+      ...ex, sets: [...ex.sets, { weight: ex.sets[ex.sets.length - 1]?.weight || "", reps: ex.sets[ex.sets.length - 1]?.reps || "", done: false }]
+    });
+    return { ...s, exercises: exs };
+  });
+
+  const rmSet = (ei, si) => setSession(s => {
+    const exs = s.exercises.map((ex, i) => {
+      if (i !== ei) return ex;
+      const sets = ex.sets.filter((_, j) => j !== si);
+      return { ...ex, sets: sets.length ? sets : [{ weight: "", reps: "", done: false }] };
+    });
+    return { ...s, exercises: exs };
+  });
+
+  const updSet = (ei, si, f, v) => setSession(s => ({
+    ...s, exercises: s.exercises.map((ex, i) => i !== ei ? ex : {
+      ...ex, sets: ex.sets.map((set, j) => j !== si ? set : { ...set, [f]: v })
+    })
+  }));
+
+  const toggleSet = (ei, si) => {
+    setSession(s => ({
+      ...s, exercises: s.exercises.map((ex, i) => i !== ei ? ex : {
+        ...ex, sets: ex.sets.map((set, j) => j !== si ? set : { ...set, done: !set.done })
+      })
+    }));
+    setRest({ remaining: 90, total: 90 });
+  };
+
+  const finishSession = async () => {
+    if (!session) return;
+    const nw = { id: Date.now(), name: session.name, date: new Date().toISOString(), duration: Math.floor(elapsed / 60), exercises: session.exercises };
+    const nws = [nw, ...workouts];
+    const np = { ...prs };
+    session.exercises.forEach(ex => ex.sets.filter(s => s.done).forEach(s => {
+      const w = parseFloat(s.weight), r = parseInt(s.reps);
+      if (!isNaN(w) && !isNaN(r) && (!np[ex.name] || w > np[ex.name].weight)) np[ex.name] = { weight: w, reps: r, date: new Date().toISOString() };
+    }));
+    await save(nws, np);
+    setSession(null); setRest(null); setModal(null); setTab("history");
+  };
+
+  const deleteWorkout = async (id) => {
+    const newWs = workouts.filter(w => w.id !== id);
+    const np = {};
+    newWs.forEach(w => w.exercises.forEach(ex => ex.sets.filter(s => s.done).forEach(s => {
+      const wt = parseFloat(s.weight), r = parseInt(s.reps);
+      if (!isNaN(wt) && !isNaN(r) && (!np[ex.name] || wt > np[ex.name].weight)) np[ex.name] = { weight: wt, reps: r, date: w.date };
+    })));
+    await save(newWs, np);
+    setExpHist(null); setConfirmDel(null);
+  };
+
+  const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+  const progData = progEx ? workouts.filter(w => w.exercises.some(e => e.name === progEx)).map(w => {
+    const ex = w.exercises.find(e => e.name === progEx);
+    const mx = Math.max(...ex.sets.filter(s => s.done && s.weight).map(s => parseFloat(s.weight) || 0), 0);
+    return { date: new Date(w.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }), weight: mx };
+  }).reverse() : [];
+
+  const volData = (() => {
+    const m = {};
+    workouts.forEach(w => {
+      const d = new Date(w.date), mon = new Date(d);
+      mon.setDate(d.getDate() - d.getDay() + 1);
+      const k = mon.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      let v = 0;
+      w.exercises.forEach(ex => ex.sets.filter(s => s.done).forEach(s => { v += (parseFloat(s.weight) || 0) * (parseInt(s.reps) || 0); }));
+      m[k] = (m[k] || 0) + v;
+    });
+    return Object.entries(m).slice(-8).map(([date, vol]) => ({ date, vol }));
+  })();
+
+  const allExs = Object.values(mergedLib).flat().sort();
+  const prList = Object.entries(prs).sort((a, b) => a[0].localeCompare(b[0]));
+
+  if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0a0a0a", color: "#555" }}>Loading...</div>;
+
+  const plateResult = (() => {
+    const t = parseFloat(plateInput.target), b = parseFloat(plateInput.bar);
+    if (isNaN(t) || isNaN(b) || t <= 0) return null;
+    return calcPlates(t, b);
+  })();
+
+  return (
+    <div className="app">
+      <style>{css}</style>
+      <div className="hdr">
+        <div className="hdr-title">WorkoutLog</div>
+        <div className="hdr-sub">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+      </div>
+      <div className="content">
+        {tab === "today" && <TodayTab session={session} setModal={setModal} elapsed={elapsed} fmt={fmt} rest={rest} setRest={setRest} addSet={addSet} rmSet={rmSet} updSet={updSet} toggleSet={toggleSet} removeEx={removeEx} finishSession={finishSession} stats={stats} />}
+        {tab === "history" && <HistoryTab workouts={workouts} expHist={expHist} setExpHist={setExpHist} confirmDel={confirmDel} setConfirmDel={setConfirmDel} deleteWorkout={deleteWorkout} />}
+        {tab === "progress" && <ProgressTab prs={prs} prList={prList} progEx={progEx} setProgEx={setProgEx} progData={progData} volData={volData} allExs={allExs} />}
+        {tab === "library" && <LibraryTab mergedLib={mergedLib} customExs={customExs} removeCustomEx={removeCustomEx} setCustomForm={setCustomForm} setModal={setModal} />}
+      </div>
+      <div className="tabs">
+        {[["today","Today"],["history","History"],["progress","Progress"],["library","Library"]].map(([id, lb]) => (
+          <button key={id} className={`tbtn ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}>
+            <Icon name={id} size={20} />
+            <span>{lb}</span>
+          </button>
+        ))}
+      </div>
+      {modal === "template" && (
+        <div className="ov" onClick={() => setModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhdl" />
+            <div className="mt">Choose Template</div>
+            {TEMPLATES.map(t => (
+              <div key={t.name} className="mitem" onClick={() => startSession(t)} style={{ flexDirection: "column", alignItems: "flex-start" }}>
+                <div style={{ fontWeight: 700 }}>{t.name}</div>
+                <div style={{ fontSize: 12, color: "#444", marginTop: 2 }}>{t.exercises.join(" · ")}</div>
+              </div>
+            ))}
+            <div className="mitem" style={{ color: "#a78bfa", fontWeight: 700 }} onClick={() => startSession(null)}>+ Start Blank Workout</div>
+          </div>
+        </div>
+      )}
+      {modal === "exercise" && (
+        <div className="ov" onClick={() => { setModal(null); setCustomForm(null); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhdl" />
+            <div className="mt">Add Exercise</div>
+            {!customForm && (
+              <button className="btn bp bfw" style={{ marginBottom: 14, marginTop: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => setCustomForm({ name: "", group: "Chest" })}>
+                <Icon name="plus" size={16} /> Create Custom Exercise
+              </button>
+            )}
+            {customForm && (
+              <div className="cust-form">
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: "#a78bfa" }}>New Custom Exercise</div>
+                <input className="finp" placeholder="Exercise name (e.g. Cable Crossover)" value={customForm.name} onChange={e => setCustomForm({ ...customForm, name: e.target.value, error: null })} autoFocus />
+                <select className="fsel" value={customForm.group} onChange={e => setCustomForm({ ...customForm, group: e.target.value })}>
+                  {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+                {customForm.error && <div style={{ color: "#ef4444", fontSize: 12, marginBottom: 8 }}>{customForm.error}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn bp" style={{ flex: 1 }} onClick={addCustomEx}>Add</button>
+                  <button className="btn bg" style={{ flex: 1 }} onClick={() => setCustomForm(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            {Object.entries(mergedLib).map(([g, exs]) => (
+              <div key={g} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: MCOL[g], textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{g}</div>
+                {exs.map(ex => (
+                  <div key={ex} className="mitem" onClick={() => addEx(ex)}>
+                    <span>{ex}</span>
+                    {isCustom(ex) && <span className="cust-bg">Custom</span>}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {modal === "plates" && <PlateModal plateInput={plateInput} setPlateInput={setPlateInput} plateResult={plateResult} setModal={setModal} />}
+    </div>
+  );
+}function TodayTab({ session, setModal, elapsed, fmt, rest, setRest, addSet, rmSet, updSet, toggleSet, removeEx, finishSession, stats }) {
+  if (!session) return (
+    <div>
+      {stats.total > 0 && <ConsistencyDashboard stats={stats} />}
+      <div className="empty">
+        <div className="ei"><Icon name="today" size={56} /></div>
+        <div className="et">Ready to train?</div>
+        <div className="es" style={{ marginBottom: 24 }}>Log your workout and track every gain.</div>
+        <button className="btn bp" style={{ width: "100%", padding: "15px", fontSize: 16 }} onClick={() => setModal("template")}>Start Workout</button>
+        <button className="btn bg" style={{ width: "100%", padding: "12px", fontSize: 14, marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }} onClick={() => setModal("plates")}>
+          <Icon name="calc" size={14} /> Plate Calculator
+        </button>
+      </div>
+    </div>
+  );
+  const done = session.exercises.reduce((a, ex) => a + ex.sets.filter(s => s.done).length, 0);
+  const total = session.exercises.reduce((a, ex) => a + ex.sets.length, 0);
+  return (
+    <div>
+      <div className="sesh-hdr">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.name}</div>
+          <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>{done}/{total} sets · {fmt(elapsed)}</div>
+        </div>
+        <button className="plate-btn" onClick={() => setModal("plates")}><Icon name="calc" size={13} />Plates</button>
+        <button className="fin-btn" onClick={finishSession}>Finish</button>
+      </div>
+      {rest && rest.remaining > 0 && (
+        <div className="rest">
+          <div style={{ position: "relative", width: 50, height: 50, flexShrink: 0 }}>
+            <svg viewBox="0 0 50 50" width="50" height="50" style={{ position: "absolute" }}>
+              <circle cx="25" cy="25" r="21" fill="none" stroke="#1e1e1e" strokeWidth="3" />
+              <circle cx="25" cy="25" r="21" fill="none" stroke="#a78bfa" strokeWidth="3"
+                strokeDasharray={`${2 * Math.PI * 21}`}
+                strokeDashoffset={`${2 * Math.PI * 21 * (1 - rest.remaining / rest.total)}`}
+                strokeLinecap="round" transform="rotate(-90 25 25)"
+                style={{ transition: "stroke-dashoffset 1s linear" }} />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#a78bfa" }}>{rest.remaining}</div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>Rest Timer</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#a78bfa" }}>{fmt(rest.remaining)}</div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn bxs bs" onClick={() => setRest(r => ({ ...r, remaining: r.remaining + 30 }))}>+30s</button>
+            <button className="btn bxs bg" onClick={() => setRest(null)}>Skip</button>
+          </div>
+        </div>
+      )}
+      {session.exercises.map((ex, ei) => (
+        <div key={ei} className="exc">
+          <div className="enm">
+            <span>{ex.name}</span>
+            <button className="btn bxs bd" onClick={() => removeEx(ei)}>Remove</button>
+          </div>
+          <div className="shdr"><span>#</span><span>Weight (lbs)</span><span>Reps</span><span>Done</span><span /></div>
+          {ex.sets.map((s, si) => (
+            <div key={si} className="srow">
+              <span className="snum">{si + 1}</span>
+              <input className="sinp" type="number" inputMode="decimal" placeholder="lbs" value={s.weight} onChange={e => updSet(ei, si, "weight", e.target.value)} style={s.done ? { opacity: 0.5 } : {}} />
+              <input className="sinp" type="number" inputMode="numeric" placeholder="reps" value={s.reps} onChange={e => updSet(ei, si, "reps", e.target.value)} style={s.done ? { opacity: 0.5 } : {}} />
+              <button className={`sdone ${s.done ? "on" : ""}`} onClick={() => toggleSet(ei, si)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="srm" onClick={() => rmSet(ei, si)}>×</button>
+            </div>
+          ))}
+          <button className="btn bxs bg bfw" onClick={() => addSet(ei)}>+ Add Set</button>
+        </div>
+      ))}
+      <button className="btn bs bfw" style={{ marginTop: 4 }} onClick={() => setModal("exercise")}>+ Add Exercise</button>
+    </div>
+  );
+}
+
+function ConsistencyDashboard({ stats }) {
+  const { thisWeek, streak, muscleStatus, total } = stats;
+  const hasMuscleData = Object.values(muscleStatus).some(d => d !== null);
+  const freshColor = (d) => d === null ? "#3a3a3a" : d <= 1 ? "#10b981" : d <= 3 ? "#f59e0b" : d <= 6 ? "#a78bfa" : "#ef4444";
+  const freshBg = (d) => d === null ? "#3a3a3a18" : d <= 1 ? "#10b98118" : d <= 3 ? "#f59e0b18" : d <= 6 ? "#a78bfa18" : "#ef444418";
+  return (
+    <div>
+      <div className="stat-grid">
+        <div className="stat-card">
+          <div className="stat-lbl">This Week</div>
+          <div className="stat-val">{thisWeek}<span style={{ fontSize: 14, color: "#555", fontWeight: 600 }}>/5</span></div>
+          <div className="stat-sub">{thisWeek >= 5 ? "Crushed it" : thisWeek >= 3 ? "On track" : `${5 - thisWeek} to go`}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-lbl" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <Icon name="flame" size={11} /> Streak
+          </div>
+          <div className="stat-val">{streak}<span style={{ fontSize: 14, color: "#555", fontWeight: 600 }}> {streak === 1 ? "wk" : "wks"}</span></div>
+          <div className="stat-sub">{streak === 0 ? "Start one this week" : `${total} total workouts`}</div>
+        </div>
+      </div>
+      {hasMuscleData && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-t">Muscle Freshness</div>
+          {GROUPS.map(g => {
+            const d = muscleStatus[g];
+            return (
+              <div key={g} className="muscle-row">
+                <span className="muscle-name" style={{ color: MCOL[g] }}>{g}</span>
+                <span className="fresh-bdg" style={{ background: freshBg(d), color: freshColor(d) }}>
+                  {d === null ? "Never" : d === 0 ? "Today" : `${d}d ago`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryTab({ workouts, expHist, setExpHist, confirmDel, setConfirmDel, deleteWorkout }) {
+  if (!workouts.length) return (
+    <div className="empty">
+      <div className="ei"><Icon name="history" size={56} /></div>
+      <div className="et">No workouts yet</div>
+      <div className="es">Complete your first session to see it here.</div>
+    </div>
+  );
+  return (
+    <div>
+      <div className="sec-t">Workout History</div>
+      {workouts.map(w => (
+        <div key={w.id} className="card">
+          <div className="hitem" onClick={() => { setExpHist(expHist === w.id ? null : w.id); setConfirmDel(null); }} style={{ cursor: "pointer" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{w.name}</div>
+              <div className="hmeta">
+                {new Date(w.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                {" · "}{w.duration}min{" · "}{w.exercises.length} exercises
+                {" · "}{w.exercises.reduce((a, e) => a + e.sets.filter(s => s.done).length, 0)} sets
+              </div>
+            </div>
+            <span style={{ color: "#444", marginLeft: 8, fontSize: 11 }}>{expHist === w.id ? "▲" : "▼"}</span>
+          </div>
+          {expHist === w.id && (
+            <div className="hexs">
+              {w.exercises.map((ex, i) => {
+                const dsets = ex.sets.filter(s => s.done);
+                if (!dsets.length) return null;
+                return (
+                  <div key={i} style={{ marginBottom: 10 }}>
+                    <div className="hexn">{ex.name}</div>
+                    {dsets.map((s, j) => <div key={j} className="hset">{j + 1}. {s.weight} lbs × {s.reps} reps</div>)}
+                  </div>
+                );
+              })}
+              <div className="del-row">
+                {confirmDel === w.id ? (
+                  <>
+                    <span style={{ fontSize: 12, color: "#ef4444", alignSelf: "center", marginRight: 4 }}>Delete this workout?</span>
+                    <button className="btn bxs bg" onClick={() => setConfirmDel(null)}>Cancel</button>
+                    <button className="btn bxs bd" onClick={() => deleteWorkout(w.id)}>Confirm Delete</button>
+                  </>
+                ) : (
+                  <button className="btn bxs bd" onClick={() => setConfirmDel(w.id)} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="trash" size={12} /> Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProgressTab({ prs, prList, progEx, setProgEx, progData, volData, allExs }) {
+  return (
+    <div>
+      <div className="sec-t">
+        <span style={{ color: "#a78bfa", display: "inline-flex" }}><Icon name="trophy" size={18} /></span>
+        Personal Records
+      </div>
+      {prList.length === 0 ? (
+        <div className="card"><div style={{ color: "#444", textAlign: "center", padding: "12px 0" }}>Complete sets to earn PRs</div></div>
+      ) : (
+        <div className="card">
+          {prList.map(([name, pr]) => {
+            const e1rm = epley(pr.weight, pr.reps);
+            return (
+              <div key={name} className="prow">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                  <div style={{ fontSize: 11, color: "#444", marginTop: 2 }}>{new Date(pr.date).toLocaleDateString()}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <span className="badge">{pr.weight} × {pr.reps}</span>
+                  <div style={{ fontSize: 10, color: "#666", marginTop: 4, fontWeight: 600 }}>est. 1RM {e1rm} lb</div>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10, color: "#444", marginTop: 10, fontStyle: "italic" }}>1RM estimated via Epley formula: w × (1 + r/30)</div>
+        </div>
+      )}
+      <div className="sec-t" style={{ marginTop: 4 }}>Weekly Volume</div>
+      <div className="card">
+        {volData.length < 2 ? (
+          <div style={{ color: "#444", textAlign: "center", padding: "20px 0", fontSize: 13 }}>Log more workouts to see trends</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={155}>
+            <BarChart data={volData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e1e" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#444" }} />
+              <YAxis tick={{ fontSize: 9, fill: "#444" }} />
+              <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8 }} labelStyle={{ color: "#ccc" }} itemStyle={{ color: "#a78bfa" }} formatter={v => [`${v.toLocaleString()} lbs`, "Volume"]} />
+              <Bar dataKey="vol" fill="#a78bfa" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+      <div className="sec-t" style={{ marginTop: 4 }}>Strength Progression</div>
+      <div className="card">
+        <select className="psel" value={progEx} onChange={e => setProgEx(e.target.value)}>
+          <option value="">Select an exercise...</option>
+          {allExs.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+        </select>
+        {progEx && progData.length > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <ResponsiveContainer width="100%" height={155}>
+              <LineChart data={progData} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e1e" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#444" }} />
+                <YAxis tick={{ fontSize: 9, fill: "#444" }} />
+                <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8 }} labelStyle={{ color: "#ccc" }} itemStyle={{ color: "#a78bfa" }} formatter={v => [`${v} lbs`, "Max Weight"]} />
+                <Line type="monotone" dataKey="weight" stroke="#a78bfa" strokeWidth={2.5} dot={{ fill: "#a78bfa", r: 3.5, strokeWidth: 0 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : progEx ? (
+          <div style={{ color: "#444", textAlign: "center", padding: "16px 0", fontSize: 13 }}>No data for this exercise yet</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function LibraryTab({ mergedLib, customExs, removeCustomEx, setCustomForm, setModal }) {
+  const isCust = name => customExs.some(c => c.name === name);
+  return (
+    <div>
+      <div className="sec-t" style={{ justifyContent: "space-between" }}>
+        <span>Exercise Library</span>
+        <button className="btn bxs bp" style={{ display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => { setCustomForm({ name: "", group: "Chest" }); setModal("exercise"); }}>
+          <Icon name="plus" size={12} /> Custom
+        </button>
+      </div>
+      {Object.entries(mergedLib).map(([g, exs]) => (
+        <div key={g} className="card">
+          <div className="card-t" style={{ color: MCOL[g] }}>{g}</div>
+          <div>
+            {exs.map(ex => (
+              <span key={ex} className="tag" style={{ background: `${MCOL[g]}18`, color: MCOL[g] }}>
+                {ex}
+                {isCust(ex) && <button className="tag-rm" onClick={() => removeCustomEx(ex, g)}>×</button>}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlateModal({ plateInput, setPlateInput, plateResult, setModal }) {
+  const flatPlates = plateResult?.plates ? plateResult.plates.flatMap(p => Array(p.count).fill(p.weight)) : [];
+  const leftSide = [...flatPlates].reverse();
+  const rightSide = flatPlates;
+  return (
+    <div className="ov" onClick={() => setModal(null)}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="mhdl" />
+        <div className="mt" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Icon name="calc" size={20} /> Plate Calculator
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 5, fontWeight: 700, textTransform: "uppercase", letterSpacing: .3 }}>Target Weight (lb)</div>
+            <input className="finp" type="number" inputMode="decimal" value={plateInput.target} onChange={e => setPlateInput({ ...plateInput, target: e.target.value })} style={{ marginBottom: 0, fontSize: 16, fontWeight: 700 }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 5, fontWeight: 700, textTransform: "uppercase", letterSpacing: .3 }}>Bar (lb)</div>
+            <select className="fsel" value={plateInput.bar} onChange={e => setPlateInput({ ...plateInput, bar: e.target.value })} style={{ marginBottom: 0 }}>
+              <option value="45">45</option>
+              <option value="35">35</option>
+              <option value="25">25</option>
+              <option value="0">No bar</option>
+            </select>
+          </div>
+        </div>
+        {plateResult?.error && !plateResult.plates && (
+          <div className="card" style={{ background: "#ef444418", borderColor: "#ef444433", color: "#ef4444", textAlign: "center" }}>{plateResult.error}</div>
+        )}
+        {plateResult?.plates && (
+          <>
+            <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: "#666", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: .3 }}>Per Side</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#a78bfa", marginBottom: 10 }}>{plateResult.perSide} lb</div>
+              {plateResult.plates.map(p => (
+                <div key={p.weight} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", fontSize: 13 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="plate" style={{ background: PLATE_COLORS[p.weight], padding: "5px 8px", fontSize: 11 }}>{p.weight}</span>
+                    <span style={{ color: "#888" }}>lb plate</span>
+                  </div>
+                  <span style={{ fontWeight: 700 }}>× {p.count}</span>
+                </div>
+              ))}
+              {plateResult.error && <div style={{ color: "#f59e0b", fontSize: 11, marginTop: 8 }}>{plateResult.error}</div>}
+            </div>
+            <div className="card" style={{ padding: "10px 8px" }}>
+              <div style={{ fontSize: 11, color: "#666", marginBottom: 4, fontWeight: 700, textTransform: "uppercase", letterSpacing: .3, paddingLeft: 8 }}>Loaded Bar</div>
+              <div className="bar-vis">
+                {leftSide.map((w, i) => (<div key={`l${i}`} className="plate" style={{ background: PLATE_COLORS[w] }}>{w}</div>))}
+                <div className="bar-collar" />
+                <div className="bar-shaft" />
+                <div className="bar-collar" />
+                {rightSide.map((w, i) => (<div key={`r${i}`} className="plate" style={{ background: PLATE_COLORS[w] }}>{w}</div>))}
+              </div>
+              <div style={{ textAlign: "center", fontSize: 11, color: "#666", marginTop: 4 }}>Total: {plateInput.target} lb</div>
+            </div>
+          </>
+        )}
+        <button className="btn bs bfw" style={{ marginTop: 14 }} onClick={() => setModal(null)}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
